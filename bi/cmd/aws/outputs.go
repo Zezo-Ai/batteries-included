@@ -15,7 +15,7 @@ var outputsCmd = &cobra.Command{
 	Use:   "outputs [install-slug|install-spec-url|install-spec-file]",
 	Short: "Get cluster outputs",
 	Long:  `Get outputs for cluster created on AWS EKS.`,
-	Args:  cobra.MatchAll(cobra.OnlyValidArgs, cobra.ExactArgs(1)),
+	Args:  cobra.MatchAll(cobra.ExactArgs(1), cobra.OnlyValidArgs),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// assume output to stdout
 		var w io.Writer = os.Stdout
@@ -31,7 +31,7 @@ var outputsCmd = &cobra.Command{
 			return err
 		}
 
-		p := cluster.NewPulumiProvider(env.Spec.Slug)
+		p := cluster.NewPulumiProvider(env.Spec)
 
 		ctx := cmd.Context()
 
@@ -39,7 +39,7 @@ var outputsCmd = &cobra.Command{
 			return err
 		}
 
-		if err := p.Outputs(ctx, w); err != nil {
+		if err := p.WriteOutputs(ctx, w); err != nil {
 			return err
 		}
 

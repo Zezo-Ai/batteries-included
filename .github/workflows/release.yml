@@ -1,15 +1,14 @@
+---
 name: Release
 
-on:
+'on':
   push:
     # Only release on tags that look like a semantic version
     # 1.0.0 of 0.50.0
     tags:
       - '[0-9]+.[0-9]+.[0-9]+*'
 
-env:
-  GOCACHE: ${{ vars.GOCACHE }}
-  GOMODCACHE: ${{ vars.GOMODCACHE }}
+env: ${{ vars }}
 
 permissions:
   contents: write
@@ -19,9 +18,9 @@ jobs:
     runs-on: ubuntu-latest-m
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
         # See: https://goreleaser.com/errors/no-history/
-        # Leading to: https://goreleaser.com/ci/ |  https://goreleaser.com/ci/actions/#workflow
+        # Leading to: https://goreleaser.com/ci/actions/#workflow
         with:
           fetch-depth: 0
           persist-credentials: false

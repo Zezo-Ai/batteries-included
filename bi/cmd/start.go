@@ -36,7 +36,7 @@ Then all the bootstrap resources are created.
 
 Then the cli waits until the installation is
 complete displaying a url for running control server.`,
-	Args: cobra.MinimumNArgs(1),
+	Args: cobra.MatchAll(cobra.ExactArgs(1), cobra.OnlyValidArgs),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		installURL := args[0]
 
@@ -45,6 +45,11 @@ complete displaying a url for running control server.`,
 
 		ctx := cmd.Context()
 		env, err := installs.NewEnv(ctx, installURL)
+		if err != nil {
+			return err
+		}
+
+		err = env.Init(ctx, true)
 		if err != nil {
 			return err
 		}

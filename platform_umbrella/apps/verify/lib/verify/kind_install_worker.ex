@@ -13,7 +13,7 @@ defmodule Verify.KindInstallWorker do
   typedstruct module: State do
     field :bi_binary, :string
     field :root_path, :string
-    field :started, :list, default: []
+    field :started, :map, default: %{}
   end
 
   @state_opts ~w(bi_binary root_path)a
@@ -54,41 +54,64 @@ defmodule Verify.KindInstallWorker do
     do_stop_all(state)
   end
 
-  defp do_start(identifier, state) do
+  def handle_call({:rage, {mod, name}}, _from, %{bi_binary: nil} = state) do
+    do_rage(mod, name, %{state | bi_binary: PathHelper.find_bi()})
+  end
+
+  def handle_call({:rage, {mod, output}}, _from, state) do
+    do_rage(mod, output, state)
+  end
+
+  defp do_start({mod, identifier}, state) do
     {spec, path} = build_install_spec(identifier, state)
     Logger.debug("Starting with #{path}")
 
-    case System.cmd(state.bi_binary, ["start", path]) do
-      {_output, 0} ->
-        Logger.debug("Kind install started from #{path}")
-
-        {:reply, {:ok, get_url(spec)}, %{state | started: [path | state.started]}}
-
-      response ->
+    with {_output, 0} <- System.cmd(state.bi_binary, ["start", path]),
+         {kube_config_path, 0} <- System.cmd(state.bi_binary, ["debug", "kube-config-path", path]),
+         {:ok, url} <- get_url(spec, kube_config_path) do
+      Logger.debug("Kind install started from #{path}")
+      Logger.debug("Kubeconfig found at #{kube_config_path}")
+      {:reply, {:ok, url, kube_config_path}, %{state | started: Map.put(state.started, mod, path)}}
+    else
+      error ->
         Logger.warning("Unable to start Kind install from #{path}")
-        {:reply, response, state}
+        {:reply, error, state}
     end
   end
 
   defp do_stop_all(%{started: started} = state) do
-    Enum.each(started, fn path ->
-      :ok = do_stop(state, path)
+    Enum.each(started, fn {_, path} ->
+      :ok = do_stop(state.bi_binary, path)
     end)
 
-    {:reply, :ok, %{state | started: []}}
+    {:reply, :ok, %{state | started: %{}}}
   end
 
-  defp do_stop(state, path) do
+  defp do_stop(bi, path) do
     spec = path |> File.read!() |> Jason.decode!()
     slug = Map.fetch!(spec, "slug")
 
     Logger.info("Stopping Kind install with path = #{path} slug #{slug}")
 
-    {_, 0} = System.cmd(state.bi_binary, ["stop", slug])
+    {_, 0} = System.cmd(bi, ["stop", slug])
 
     # Remove the file after stopping the install
     _ = File.rm_rf(path)
     :ok
+  end
+
+  defp do_rage(mod, output, %{bi_binary: bi, started: started} = state) do
+    {_, path} = Enum.find(started, fn {module, _} -> module == mod end)
+
+    case System.cmd(bi, ["rage", path, "-o=#{output}"], stderr_to_stdout: true) do
+      {output, 0} ->
+        Logger.debug("Rage ran: #{inspect(output)}")
+        {:reply, :ok, state}
+
+      response ->
+        Logger.error("Rage failed for: #{inspect(response)}")
+        {:reply, response, state}
+    end
   end
 
   def build_install_spec(identifier, %{root_path: root_dir} = _state) do
@@ -101,21 +124,29 @@ defmodule Verify.KindInstallWorker do
     {spec, path}
   end
 
-  def get_url(%{target_summary: summary} = _spec) do
+  def get_url(%{target_summary: summary} = _spec, kube_config_path) do
     # don't use the connection pool
-    {:ok, conn} = K8s.Conn.from_file("~/.kube/config", insecure_skip_tls_verify: true)
+    {:ok, conn} = K8s.Conn.from_file(kube_config_path, insecure_skip_tls_verify: true)
 
     {api_version, kind} = ApiVersionKind.from_resource_type!(:config_map)
     core_namespace = Namespaces.core_namespace(summary)
     op = K8s.Client.get(api_version, kind, name: "access-info", namespace: core_namespace)
 
-    {:ok, %{"data" => %{"hostname" => hostname, "ssl" => ssl}}} = K8s.Client.run(conn, op)
+    case K8s.Client.run(conn, op) do
+      {:ok, %{"data" => %{"hostname" => hostname, "ssl" => ssl}}} ->
+        {:ok, "#{if ssl == "true", do: "https", else: "http"}://#{hostname}"}
 
-    "#{if ssl == "true", do: "https", else: "http"}://#{hostname}"
+      error ->
+        error
+    end
   end
 
-  def start(path) do
-    GenServer.call(__MODULE__, {:start, path}, 15 * 60 * 1000)
+  def start(mod, identifier) do
+    GenServer.call(__MODULE__, {:start, {mod, identifier}}, 15 * 60 * 1000)
+  end
+
+  def rage(mod, output) do
+    GenServer.call(__MODULE__, {:rage, {mod, output}}, 15 * 60 * 1000)
   end
 
   def stop_all do

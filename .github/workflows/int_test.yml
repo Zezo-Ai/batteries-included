@@ -1,6 +1,7 @@
+---
 name: Integration tests
 
-on:
+'on':
   workflow_run:
     branches:
       - master
@@ -9,22 +10,33 @@ on:
     types:
       - completed
 
+env: ${{ vars }}
+
 jobs:
   elixir-int-test:
-    runs-on: ubuntu-latest-m
-    timeout-minutes: 45
+    runs-on: ubuntu-latest-l
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    timeout-minutes: 25
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
         with:
           persist-credentials: false
 
       - name: Setup CI
         uses: ./.github/actions/setup-ci
-        with:
-          go_cache: 'false'
 
       - name: Run integration tests
         run: |
-          bin/bix ex-int-test
+          bin/bix go ensure-bi
+          bin/bix elixir int-test
+
+      - name: Upload results on failure
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: int-test-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 5
+          path: |
+            /tmp/bi-int-test/

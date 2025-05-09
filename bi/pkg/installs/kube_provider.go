@@ -78,7 +78,7 @@ func (env *InstallEnv) startAWS(ctx context.Context, progressReporter *util.Prog
 	}
 
 	var buf bytes.Buffer
-	if err := env.clusterProvider.Outputs(ctx, &buf); err != nil {
+	if err := env.clusterProvider.WriteOutputs(ctx, &buf); err != nil {
 		return fmt.Errorf("error getting cluster outputs: %w", err)
 	}
 
@@ -195,11 +195,11 @@ func (env *InstallEnv) addMetalIPs(ctx context.Context) error {
 
 	pools := []specs.IPAddressPoolSpec{}
 	for _, pool := range env.Spec.TargetSummary.IPAddressPools {
-		if pool.Name != "kind" {
-			pools = append(pools, pool)
-		} else {
+		if pool.Name == "kind" {
 			slog.Debug("Skipping existing kind pool", slog.Any("pool", pool))
+			continue
 		}
+		pools = append(pools, pool)
 	}
 	pools = append(pools, newIpSpec)
 	env.Spec.TargetSummary.IPAddressPools = pools

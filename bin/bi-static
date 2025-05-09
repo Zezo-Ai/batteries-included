@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+# Get where the current script is located
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd -P)
+# Get the root directory of the project
+ROOT_DIR=$(cd "$SCRIPT_DIR/.." &>/dev/null && pwd -P)
+
+source "${ROOT_DIR}/bin/lib/common-functions.sh"
+
+do_static_dev() {
+    log "${GREEN}Starting Development Environment${NOFORMAT}"
+    bi_pushd "${ROOT_DIR}/static"
+    npm install >/dev/null
+    npm run dev
+    bi_popd
+}
+
+do_static_build() {
+    log "${GREEN}Building Static Site${NOFORMAT}"
+    bi_pushd "${ROOT_DIR}/static"
+    npm clean-install >/dev/null
+    npm run build
+    bi_popd
+}
+
+usage() {
+    cat <<EOF
+Usage: $(basename "${BASH_SOURCE[0]}") [-h] [-v] [-f] command [arg1...]
+
+Available options:
+
+-h, --help      Print this help and exit
+-v, --verbose   Print script debug info
+
+Available commands:
+
+- dev               Start a development environment with npm
+- build             Build the static site
+EOF
+    exit 1
+}
+
+parse_params() {
+    while :; do
+        case "${1-}" in
+        -h | --help) usage ;;
+        -v | --verbose) export TRACE=1 ;;
+        --no-color) export NO_COLOR=1 ;;
+        -?*) die "Unknown option: $1" ;;
+        *) break ;;
+        esac
+        shift
+    done
+
+    if [[ $# -lt 1 ]]; then
+        log "Missing script arguments"
+        usage
+    fi
+
+    command="$1"
+    shift
+
+    return 0
+}
+
+parse_params "$@"
+setup_colors
+setup_trace
+setup_root
+maybe_add_to_path "${ROOT_DIR}/bin"
+export PATH
+
+case "$command" in
+dev)
+    do_static_dev
+    ;;
+build)
+    do_static_build
+    ;;
+*)
+    usage
+    ;;
+esac

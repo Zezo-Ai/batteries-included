@@ -21,13 +21,13 @@ import (
 type testFn[T any] func(convertedAPIObject *T) (done bool, err error)
 
 func (spec *InstallSpec) WaitForBootstrap(ctx context.Context, kubeClient kube.KubeClient) error {
-	usage, err := spec.GetBatteryConfigField("battery_core", "usage")
+	usage, err := spec.GetCoreUsage()
 	if err != nil {
 		return fmt.Errorf("failed to determine if control server is running in cluster: %w", err)
 	}
 
 	// no need to wait for anything else if the control server isn't running in cluster
-	if usage.(string) == "internal_dev" {
+	if usage == "internal_dev" {
 		slog.Debug("control server not running in cluster, skipping wait")
 		return nil
 	}
@@ -55,7 +55,7 @@ func (spec *InstallSpec) WaitForBootstrap(ctx context.Context, kubeClient kube.K
 		// get the access-info configmap (and URL information)
 		info, err := kubeClient.GetAccessInfo(ctx, ns)
 		if err != nil {
-			slog.Debug("Failed to get access info config map", slog.Any("err", err))
+			slog.Debug("Failed to get access info config map", slog.Any("error", err))
 			return err
 		}
 		url := info.GetURL()
@@ -167,7 +167,7 @@ func buildCallback[T any](fn testFn[T]) func(u *unstructured.Unstructured) (bool
 				"failed to convert unstructured object into typed resource",
 				slog.String("namespace", u.GetNamespace()),
 				slog.String("name", u.GetName()),
-				slog.Any("err", err),
+				slog.Any("error", err),
 			)
 			return false, nil
 		}
